@@ -9,17 +9,3 @@ CREATE TABLE IF NOT EXISTS public.weather
     CONSTRAINT weather_pkey PRIMARY KEY (id)
 )
 
-SELECT * FROM weather;
-
-SELECT AVG(temperature) FROM weather;
-
-SELECT MAX(temperature) FROM weather;
-
-select id, temperature
-from weather
-where temperature = (select max(temperature) from weather);
-
-select id, temperature
-from weather 
-order by temperature desc, id desc
-limit 1;

@@ -17,22 +17,26 @@ Extract → Transform → Load
 
 ## Структура проекта
 weather-etl/
-├── etl.py          # основной пайплайн
-├── config.py       # конфигурация
+├── scripts/
+│   ├── etl.py      # основной пайплайн
+│   └── config.py   # конфигурация
+├── sql/
+│   └── schema.sql
 ├── .env            # секреты (не в git)
 ├── .gitignore
-└── requirements.txt
+├── requirements.txt
+└── README.md
 
 ## Установка и запуск
 
 1. Клонировать репозиторий
-git clone https://github.com/твой_ник/weather-etl.git
+git clone https://github.com/ankkoss/weather-etl
 
 2. Установить зависимости
 pip install -r requirements.txt
 
 3. Создать .env файл
-DB_PASSWORD=твой_пароль
+DB_PASSWORD=ваш_пароль
 DB_NAME=weather_db
 DB_USER=postgres
 DB_HOST=localhost
