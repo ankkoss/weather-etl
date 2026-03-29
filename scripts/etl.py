@@ -1,9 +1,20 @@
 import logging
 import requests
 import psycopg2
-from psycopg2 import errors 
+import json
 from psycopg2.extras import execute_values
-from scripts.config import DB_CONFIG, CITIES
+from config import DB_CONFIG, CITIES
+from datetime import datetime
+from pathlib import Path
+
+def save_raw(data, city_name):
+    date = datetime.utcnow().strftime("%Y-%m-%d")
+    path = Path(f"data/raw/{date}")
+    path.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.utcnow().strftime("%H-%M-%S")
+
+    with open(path / f"{city_name}_{timestamp}.json", "w", encoding="utf-8") as f:
+        json.dump(data, f)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,12 +27,12 @@ API_URL = "https://api.open-meteo.com/v1/forecast"
 
 
 def extract(city: dict) -> dict | None:
-    """Запрашиваем данные о погоде для одного города."""
+    """Запрашиваем данные о погоде для 9 городов."""
     params = {
-        "latitude": city["lat"],
-        "longitude": city["lon"],
-        "current_weather": True,
-        "timezone": "Europe/Moscow",
+    "latitude": city["lat"],
+    "longitude": city["lon"],
+    "hourly": "temperature_2m,wind_speed_10m,precipitation",
+    "timezone": "UTC",
     }
     try:
         response = requests.get(API_URL, params=params, timeout=10)
@@ -32,19 +43,29 @@ def extract(city: dict) -> dict | None:
         return None
 
 
-def transform(data: dict, city_name: str) -> dict | None:
-    """Извлекаем нужные поля, возвращаем структурированный dict."""
+def transform(data: dict, city_name: str) -> list[dict]:
     try:
-        w = data["current_weather"]
-        return {
-            "city":        city_name,
-            "temperature": float(w["temperature"]),
-            "windspeed":   float(w["windspeed"]),
-            "time":        w["time"],
-        }
-    except (KeyError, ValueError) as e:
+        result = []
+
+        times = data["hourly"]["time"]
+        temps = data["hourly"]["temperature_2m"]
+        wind = data["hourly"]["wind_speed_10m"]
+        precipitation = data["hourly"]["precipitation"]
+
+        for t, temp, w, p in zip(times, temps, wind, precipitation):
+            result.append({
+                "city": city_name,
+                "time": t,
+                "temperature": float(temp),
+                "windspeed": float(w),
+                "precipitation": float(p),
+            })
+
+        return result
+
+    except Exception as e:
         logger.error("Ошибка трансформации для %s: %s", city_name, e)
-        return None
+        return []
 
 
 def load(records: list[dict], conn) -> int:
@@ -52,14 +73,19 @@ def load(records: list[dict], conn) -> int:
     if not records:
         return 0
 
-    rows = [(r["city"], r["temperature"], r["windspeed"], r["time"]) for r in records]
+    rows = [(r["city"], r["temperature"], r["windspeed"], r["precipitation"], r["time"]) 
+            for r in records
+    ]
+    
+    logger.info("Подготовлено %d строк для вставки", len(rows))
+
     inserted = 0
     with conn.cursor() as cur:
         try:
             execute_values(
                 cur,
                 """
-                INSERT INTO weather (city, temperature, windspeed, time)
+                INSERT INTO weather (city, temperature, windspeed, precipitation, time)
                 VALUES %s
                 ON CONFLICT (city, time) DO NOTHING
                 """,
@@ -80,15 +106,15 @@ def main():
     for city in CITIES:
         raw = extract(city)
         if raw is None:
+            logger.warning("Нет данных для %s", city["name"])
             continue
 
-        record = transform(raw, city["name"])
-        if record is None:
-            continue
+        save_raw(raw, city["name"])
 
-        records.append(record)
-        logger.info("%s: %.1f°C, ветер %.1f км/ч", 
-                    city["name"], record["temperature"], record["windspeed"])
+        records_city = transform(raw, city["name"])
+        records.extend(records_city)
+
+        logger.info("%s: получено %d записей", city["name"], len(records_city))
 
     if not records:
         logger.warning("Нет данных для записи")
