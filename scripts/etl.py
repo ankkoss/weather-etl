@@ -3,9 +3,10 @@ import requests
 import psycopg2
 import json
 from psycopg2.extras import execute_values
-from config import DB_CONFIG, CITIES
 from datetime import datetime
 from pathlib import Path
+from scripts.config import DB_CONFIG, CITIES
+from scripts.spark_job import run_spark
 
 def save_raw(data, city_name):
     date = datetime.utcnow().strftime("%Y-%m-%d")
@@ -119,6 +120,10 @@ def main():
     if not records:
         logger.warning("Нет данных для записи")
         return
+    
+    logger.info("Передаем %d записей в Spark", len(records))
+    
+    df = run_spark(records)
 
     with psycopg2.connect(**DB_CONFIG) as conn:
         load(records, conn)
