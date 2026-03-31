@@ -122,7 +122,7 @@ def main():
         return
     
     logger.info("Передаем %d записей в Spark", len(records))
-    
+
     df = run_spark(records)
 
     with psycopg2.connect(**DB_CONFIG) as conn:
